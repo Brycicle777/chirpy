@@ -6,6 +6,15 @@ import (
 	"sync/atomic"
 )
 
+const metricsHTML = `
+<html>
+	<body>
+		<h1>Welcome, Chirpy Admin</h1>
+		<p>Chirpy has been visited %d times!</p>
+	</body>
+</html>
+`
+
 type apiConfig struct {
 	fileserverHits atomic.Int32
 }
@@ -24,10 +33,10 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(200)
 	hits := cfg.fileserverHits.Load()
-	w.Write([]byte(fmt.Sprintf("Hits: %v", hits)))
+	w.Write([]byte(fmt.Sprintf(metricsHTML, hits)))
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
@@ -43,9 +52,9 @@ func main() {
 	handlerApp := http.FileServer(http.Dir("."))
 	handlerApp = http.StripPrefix("/app", handlerApp)
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(handlerApp))
-	mux.Handle("/healthz", http.HandlerFunc(handlerReadiness))
-	mux.Handle("/metrics", http.HandlerFunc(apiCfg.handlerMetrics))
-	mux.Handle("/reset", http.HandlerFunc(apiCfg.handlerReset))
+	mux.Handle("GET /api/healthz", http.HandlerFunc(handlerReadiness))
+	mux.Handle("GET /admin/metrics", http.HandlerFunc(apiCfg.handlerMetrics))
+	mux.Handle("POST /admin/reset", http.HandlerFunc(apiCfg.handlerReset))
 	server := http.Server{
 		Addr:    ":8080",
 		Handler: mux,
