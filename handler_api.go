@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"internal/database"
 	"log"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	db             *database.Queries
 }
 
 type chirpPost struct {
