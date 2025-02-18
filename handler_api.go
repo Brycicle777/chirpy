@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -15,9 +16,12 @@ type chirpPost struct {
 	Body string `json:"body"`
 }
 
-type chirpValidation struct {
+type errorResponse struct {
 	Error string `json:"error"`
-	Valid bool   `json:"valid"`
+}
+
+type cleanedResponse struct {
+	CleanedBody string `json:"cleaned_body"`
 }
 
 func handlerReadiness(w http.ResponseWriter, r *http.Request) {
@@ -27,37 +31,46 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
-	respBody := chirpValidation{
-		Error: "",
-		Valid: true,
-	}
-
 	decoder := json.NewDecoder(r.Body)
 	chirp := chirpPost{}
 	err := decoder.Decode(&chirp)
 	if err != nil {
 		log.Printf("Error decoding chirp: %s", err)
-		respBody.Error = "Something went wrong"
-		respBody.Valid = false
-		w.WriteHeader(500)
+		respondWithError(w, 500, "Something went wrong")
 		return
 	}
 
 	if len(chirp.Body) > 140 {
-		respBody.Error = "Chirp is too long"
-		respBody.Valid = false
-		w.WriteHeader(400)
-	} else {
-		w.WriteHeader(200)
-	}
-
-	resp, err := json.Marshal(respBody)
-	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
+	respondWithJSON(w, 200, cleanedResponse{
+		CleanedBody: replaceProfanity(chirp.Body),
+	})
+}
 
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	respondWithJSON(w, code, errorResponse{
+		Error: msg,
+	})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(resp)
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(payload)
+}
+
+func replaceProfanity(body string) string {
+	words := strings.Split(body, " ")
+	for i := range words {
+		switch strings.ToLower(words[i]) {
+		case
+			"kerfuffle",
+			"sharbert",
+			"fornax":
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }
