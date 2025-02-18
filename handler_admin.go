@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -29,8 +30,16 @@ func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
+	if cfg.platform != "dev" {
+		respondWithError(w, 403, "Reset only allowed in dev")
+		return
+	}
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(200)
 	cfg.fileserverHits.Store(0)
 	w.Write([]byte("Hits reset."))
+	err := cfg.db.DeleteAllUsers(r.Context())
+	if err != nil {
+		log.Fatalf("Error wiping database: %v", err)
+	}
 }

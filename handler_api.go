@@ -7,15 +7,30 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	platform       string
 	db             *database.Queries
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 type chirpPost struct {
 	Body string `json:"body"`
+}
+
+type createUserRequest struct {
+	Email string `json:"email"`
 }
 
 type errorResponse struct {
@@ -48,6 +63,31 @@ func handlerValidateChirp(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithJSON(w, 200, cleanedResponse{
 		CleanedBody: replaceProfanity(chirp.Body),
+	})
+}
+
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	newUserReq := createUserRequest{}
+	err := decoder.Decode(&newUserReq)
+	if err != nil {
+		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), newUserReq.Email)
+	if err != nil {
+		log.Printf("Error creating user: %v", err)
+		respondWithError(w, 500, "Error creating user")
+		return
+	}
+
+	respondWithJSON(w, 201, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
 	})
 }
 
