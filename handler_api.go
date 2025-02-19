@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"internal/database"
 	"log"
@@ -128,7 +129,34 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	respondWithJSON(w, 200, chirps)
+}
 
+func (cfg *apiConfig) handlerGetChirp(w http.ResponseWriter, r *http.Request) {
+	chirp_id, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		log.Printf("Error parsing provided chirp id: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	chirp, err := cfg.db.GetChirp(r.Context(), chirp_id)
+	if err == sql.ErrNoRows {
+		log.Printf("Chirp does not exist: %s", err)
+		respondWithError(w, 404, "The requested chirp was not found")
+		return
+	}
+	if err != nil {
+		log.Printf("Error retrieving chirp: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 200, chirpResponse{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
