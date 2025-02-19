@@ -52,7 +52,32 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func (cfg *apiConfig) handlerChirps(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	newUserReq := createUserRequest{}
+	err := decoder.Decode(&newUserReq)
+	if err != nil {
+		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), newUserReq.Email)
+	if err != nil {
+		log.Printf("Error creating user: %v", err)
+		respondWithError(w, 500, "Error creating user")
+		return
+	}
+
+	respondWithJSON(w, 201, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+}
+
+func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	chirp := chirpPost{}
 	err := decoder.Decode(&chirp)
@@ -85,29 +110,25 @@ func (cfg *apiConfig) handlerChirps(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	newUserReq := createUserRequest{}
-	err := decoder.Decode(&newUserReq)
+func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	chirpResponses, err := cfg.db.GetChirps(r.Context())
 	if err != nil {
-		log.Printf("Error parsing request: %s", err)
+		log.Printf("Error retrieving chirp: %s", err)
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
-
-	user, err := cfg.db.CreateUser(r.Context(), newUserReq.Email)
-	if err != nil {
-		log.Printf("Error creating user: %v", err)
-		respondWithError(w, 500, "Error creating user")
-		return
+	var chirps []chirpResponse
+	for _, chirp := range chirpResponses {
+		chirps = append(chirps, chirpResponse{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
 	}
+	respondWithJSON(w, 200, chirps)
 
-	respondWithJSON(w, 201, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-	})
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
