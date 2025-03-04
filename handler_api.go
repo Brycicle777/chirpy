@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"internal/auth"
 	"internal/database"
 	"log"
 	"net/http"
@@ -39,8 +40,9 @@ type chirpResponse struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
-type createUserRequest struct {
-	Email string `json:"email"`
+type userRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type errorResponse struct {
@@ -55,7 +57,7 @@ func handlerReadiness(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
-	newUserReq := createUserRequest{}
+	newUserReq := userRequest{}
 	err := decoder.Decode(&newUserReq)
 	if err != nil {
 		log.Printf("Error parsing request: %s", err)
@@ -63,7 +65,17 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, err := cfg.db.CreateUser(r.Context(), newUserReq.Email)
+	hashedPassword, err := auth.HashPassword(newUserReq.Password)
+	if err != nil || len(hashedPassword) == 0 {
+		log.Printf("Error hashing password: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          newUserReq.Email,
+		HashedPassword: hashedPassword,
+	})
 	if err != nil {
 		log.Printf("Error creating user: %v", err)
 		respondWithError(w, 500, "Error creating user")
@@ -71,6 +83,38 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, 201, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+}
+
+func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	userReq := userRequest{}
+	err := decoder.Decode(&userReq)
+	if err != nil {
+		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	user, err := cfg.db.GetUserFromEmail(r.Context(), userReq.Email)
+	if err != nil {
+		log.Printf("Error logging in: %s", err)
+		respondWithError(w, 401, "Incorrect email or password")
+		return
+	}
+
+	err = auth.CheckPasswordHash(userReq.Password, user.HashedPassword)
+	if err != nil {
+		log.Printf("Error logging in: %s", err)
+		respondWithError(w, 401, "Incorrect email or password")
+		return
+	}
+
+	respondWithJSON(w, 200, User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
