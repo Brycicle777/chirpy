@@ -22,11 +22,12 @@ type apiConfig struct {
 }
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 type chirpPost struct {
@@ -99,7 +100,7 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&userReq)
 	if err != nil {
 		log.Printf("Error parsing request: %s", err)
-		respondWithError(w, 500, "Something went wrong")
+		respondWithError(w, 500, "1Something went wrong")
 		return
 	}
 
@@ -117,12 +118,59 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expiresInSec := time.Duration(3600) * time.Second
-	if userReq.ExpiresInSeconds > 0 && userReq.ExpiresInSeconds < 3600 {
-		expiresInSec = time.Duration(userReq.ExpiresInSeconds) * time.Second
+	token, err := auth.MakeJWT(user.ID, cfg.jwtSecret, time.Duration(3600)*time.Second)
+	if err != nil {
+		log.Printf("Error creating token: %s", err)
+		respondWithError(w, 500, "2Something went wrong")
+		return
 	}
 
-	token, err := auth.MakeJWT(user.ID, cfg.jwtSecret, expiresInSec)
+	refresh_token, err := auth.MakeRefreshToken()
+	if err != nil {
+		log.Printf("Error creating refresh token: %s", err)
+		respondWithError(w, 500, "3Something went wrong")
+		return
+	}
+	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:  refresh_token,
+		UserID: user.ID,
+	})
+	if err != nil {
+		log.Printf("Error creating refresh token: %s", err)
+		respondWithError(w, 500, "4Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 200, User{
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refresh_token,
+	})
+}
+
+func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
+	refresh_token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	active_token, err := cfg.db.GetActiveRefreshToken(r.Context(), refresh_token)
+	if err == sql.ErrNoRows {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	} else if err != nil {
+		log.Printf("Error retrieving token: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	token, err := auth.MakeJWT(active_token.UserID, cfg.jwtSecret, time.Duration(3600)*time.Second)
 	if err != nil {
 		log.Printf("Error creating token: %s", err)
 		respondWithError(w, 500, "Something went wrong")
@@ -130,12 +178,26 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, 200, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		Token: token,
 	})
+}
+
+func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
+	refresh_token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	err = cfg.db.RevokeRefreshToken(r.Context(), refresh_token)
+	if err != nil {
+		log.Printf("Error revoking token: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 204, User{})
 }
 
 func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
