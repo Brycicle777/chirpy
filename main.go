@@ -15,6 +15,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
+	jwtSecret := os.Getenv("JWT_SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
@@ -23,8 +24,9 @@ func main() {
 
 	mux := http.NewServeMux()
 	apiCfg := apiConfig{
-		platform: platform,
-		db:       dbQueries,
+		platform:  platform,
+		db:        dbQueries,
+		jwtSecret: jwtSecret,
 	}
 	handlerApp := http.FileServer(http.Dir("."))
 	handlerApp = http.StripPrefix("/app", handlerApp)

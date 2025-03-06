@@ -18,6 +18,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	platform       string
 	db             *database.Queries
+	jwtSecret      string
 }
 
 type User struct {
@@ -25,6 +26,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 type chirpPost struct {
@@ -41,8 +43,9 @@ type chirpResponse struct {
 }
 
 type userRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email            string `json:"email"`
+	Password         string `json:"password"`
+	ExpiresInSeconds int    `json:"expires_in_seconds"`
 }
 
 type errorResponse struct {
@@ -114,11 +117,24 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	expiresInSec := time.Duration(3600) * time.Second
+	if userReq.ExpiresInSeconds > 0 && userReq.ExpiresInSeconds < 3600 {
+		expiresInSec = time.Duration(userReq.ExpiresInSeconds) * time.Second
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.jwtSecret, expiresInSec)
+	if err != nil {
+		log.Printf("Error creating token: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
 	respondWithJSON(w, 200, User{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	})
 }
 
@@ -131,6 +147,18 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Error procesing header: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	userId, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
 
 	if len(chirp.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
@@ -139,7 +167,7 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 
 	newChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body:   replaceProfanity(chirp.Body),
-		UserID: chirp.UserID,
+		UserID: userId,
 	})
 	if err != nil {
 		log.Printf("Error creating chirp: %s", err)

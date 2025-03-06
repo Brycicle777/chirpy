@@ -3,16 +3,19 @@ module chirpy
 go 1.23.6
 
 require (
-	github.com/google/uuid v1.6.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
-	github.com/lib/pq v1.10.9 // indirect
-	golang.org/x/crypto v0.35.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
 )
 
 require internal/database v0.0.0
 
 replace internal/database => ./internal/database
 
-require internal/auth v0.0.0
+require (
+	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
+	github.com/lib/pq v1.10.9
+	internal/auth v0.0.0
+)
 
 replace internal/auth => ./internal/auth
