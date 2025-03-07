@@ -16,6 +16,7 @@ SELECT
           ,updated_at
           ,email
           ,hashed_password
+          ,is_chirpy_red
 FROM      users
 WHERE     email = $1
 `
@@ -29,6 +30,7 @@ func (q *Queries) GetUserFromEmail(ctx context.Context, email string) (User, err
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }

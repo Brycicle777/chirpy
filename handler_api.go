@@ -28,6 +28,7 @@ type User struct {
 	Email        string    `json:"email"`
 	Token        string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type chirpPost struct {
@@ -41,6 +42,13 @@ type chirpResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	Body      string    `json:"body"`
 	UserID    uuid.UUID `json:"user_id"`
+}
+
+type polkaRequest struct {
+	Event string `json:"event"`
+	Data  struct {
+		UserID string `json:"user_id"`
+	} `json:"data"`
 }
 
 type userRequest struct {
@@ -87,10 +95,11 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, 201, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
+		ID:          user.ID,
+		CreatedAt:   user.CreatedAt,
+		UpdatedAt:   user.UpdatedAt,
+		Email:       user.Email,
+		IsChirpyRed: user.IsChirpyRed,
 	})
 }
 
@@ -148,6 +157,7 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 		Email:        user.Email,
 		Token:        token,
 		RefreshToken: refresh_token,
+		IsChirpyRed:  user.IsChirpyRed,
 	})
 }
 
@@ -194,11 +204,47 @@ func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	respondWithJSON(w, 200, User{
-		ID:        updatedUser.ID,
-		CreatedAt: updatedUser.CreatedAt,
-		UpdatedAt: updatedUser.UpdatedAt,
-		Email:     updatedUser.Email,
+		ID:          updatedUser.ID,
+		CreatedAt:   updatedUser.CreatedAt,
+		UpdatedAt:   updatedUser.UpdatedAt,
+		Email:       updatedUser.Email,
+		IsChirpyRed: updatedUser.IsChirpyRed,
 	})
+}
+
+func (cfg *apiConfig) handlerUpgradeUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	polkaReq := polkaRequest{}
+	err := decoder.Decode(&polkaReq)
+	if err != nil {
+		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	if polkaReq.Event != "user.upgraded" {
+		respondWithJSON(w, 204, User{})
+		return
+	}
+
+	userID, err := uuid.Parse(polkaReq.Data.UserID)
+	if err != nil {
+		log.Printf("Error parsing user id: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	_, err = cfg.db.UpgradeUser(r.Context(), userID)
+	if err == sql.ErrNoRows {
+		log.Printf("User does not exist: %s", err)
+		respondWithError(w, 404, "User not found")
+		return
+	} else if err != nil {
+		log.Printf("Error upgrading user: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 204, User{})
 }
 
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {

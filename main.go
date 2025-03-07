@@ -41,6 +41,7 @@ func main() {
 	mux.Handle("POST /api/login", http.HandlerFunc(apiCfg.handlerLoginUser))
 	mux.Handle("POST /api/refresh", http.HandlerFunc(apiCfg.handlerRefresh))
 	mux.Handle("POST /api/revoke", http.HandlerFunc(apiCfg.handlerRevoke))
+	mux.Handle("POST /api/polka/webhooks", http.HandlerFunc(apiCfg.handlerUpgradeUser))
 	mux.Handle("GET /admin/metrics", http.HandlerFunc(apiCfg.handlerMetrics))
 	mux.Handle("POST /admin/reset", http.HandlerFunc(apiCfg.handlerReset))
 	server := http.Server{
