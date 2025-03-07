@@ -295,6 +295,54 @@ func (cfg *apiConfig) handlerPostChirp(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request) {
+	chirp_id, err := uuid.Parse(r.PathValue("chirpID"))
+	if err != nil {
+		log.Printf("Error parsing provided chirp id: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+	chirp, err := cfg.db.GetChirp(r.Context(), chirp_id)
+	if err == sql.ErrNoRows {
+		log.Printf("Chirp does not exist: %s", err)
+		respondWithError(w, 404, "The requested chirp was not found")
+		return
+	}
+	if err != nil {
+		log.Printf("Error retrieving chirp: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+	if userId != chirp.UserID {
+		log.Printf("Not owner of chirp: %s", err)
+		respondWithError(w, 403, "Unauthorized")
+		return
+	}
+
+	err = cfg.db.DeleteChirp(r.Context(), chirp.ID)
+	if err != nil {
+		log.Printf("Error deleting chirp: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 204, chirpResponse{})
+}
+
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	chirpResponses, err := cfg.db.GetChirps(r.Context())
 	if err != nil {
