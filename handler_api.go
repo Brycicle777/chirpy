@@ -100,7 +100,7 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&userReq)
 	if err != nil {
 		log.Printf("Error parsing request: %s", err)
-		respondWithError(w, 500, "1Something went wrong")
+		respondWithError(w, 500, "Something went wrong")
 		return
 	}
 
@@ -121,14 +121,14 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.MakeJWT(user.ID, cfg.jwtSecret, time.Duration(3600)*time.Second)
 	if err != nil {
 		log.Printf("Error creating token: %s", err)
-		respondWithError(w, 500, "2Something went wrong")
+		respondWithError(w, 500, "Something went wrong")
 		return
 	}
 
 	refresh_token, err := auth.MakeRefreshToken()
 	if err != nil {
 		log.Printf("Error creating refresh token: %s", err)
-		respondWithError(w, 500, "3Something went wrong")
+		respondWithError(w, 500, "Something went wrong")
 		return
 	}
 	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
@@ -137,7 +137,7 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("Error creating refresh token: %s", err)
-		respondWithError(w, 500, "4Something went wrong")
+		respondWithError(w, 500, "Something went wrong")
 		return
 	}
 
@@ -148,6 +148,56 @@ func (cfg *apiConfig) handlerLoginUser(w http.ResponseWriter, r *http.Request) {
 		Email:        user.Email,
 		Token:        token,
 		RefreshToken: refresh_token,
+	})
+}
+
+func (cfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	userReq := userRequest{}
+	err := decoder.Decode(&userReq)
+	if err != nil {
+		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	userId, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		log.Printf("Invalid token: %s", err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(userReq.Password)
+	if err != nil || len(hashedPassword) == 0 {
+		log.Printf("Error hashing password: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	updatedUser, err := cfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
+		Email:          userReq.Email,
+		HashedPassword: hashedPassword,
+		ID:             userId,
+	})
+	if err != nil {
+		log.Printf("Error updating database: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	respondWithJSON(w, 200, User{
+		ID:        updatedUser.ID,
+		CreatedAt: updatedUser.CreatedAt,
+		UpdatedAt: updatedUser.UpdatedAt,
+		Email:     updatedUser.Email,
 	})
 }
 
