@@ -403,6 +403,8 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
+	authorId, _ := uuid.Parse(r.URL.Query().Get("author_id"))
+
 	chirpResponses, err := cfg.db.GetChirps(r.Context())
 	if err != nil {
 		log.Printf("Error retrieving chirp: %s", err)
@@ -410,14 +412,28 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var chirps []chirpResponse
-	for _, chirp := range chirpResponses {
-		chirps = append(chirps, chirpResponse{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
-		})
+	if len(authorId) > 0 {
+		for _, chirp := range chirpResponses {
+			if chirp.UserID == authorId {
+				chirps = append(chirps, chirpResponse{
+					ID:        chirp.ID,
+					CreatedAt: chirp.CreatedAt,
+					UpdatedAt: chirp.UpdatedAt,
+					Body:      chirp.Body,
+					UserID:    chirp.UserID,
+				})
+			}
+		}
+	} else {
+		for _, chirp := range chirpResponses {
+			chirps = append(chirps, chirpResponse{
+				ID:        chirp.ID,
+				CreatedAt: chirp.CreatedAt,
+				UpdatedAt: chirp.UpdatedAt,
+				Body:      chirp.Body,
+				UserID:    chirp.UserID,
+			})
+		}
 	}
 	respondWithJSON(w, 200, chirps)
 }
