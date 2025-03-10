@@ -19,6 +19,7 @@ type apiConfig struct {
 	platform       string
 	db             *database.Queries
 	jwtSecret      string
+	polkaKey       string
 }
 
 type User struct {
@@ -218,6 +219,18 @@ func (cfg *apiConfig) handlerUpgradeUser(w http.ResponseWriter, r *http.Request)
 	err := decoder.Decode(&polkaReq)
 	if err != nil {
 		log.Printf("Error parsing request: %s", err)
+		respondWithError(w, 500, "Something went wrong")
+		return
+	}
+
+	polkaKey, err := auth.GetAPIKey(r.Header)
+
+	if polkaKey != cfg.polkaKey {
+		log.Printf("Invalid apiKey: %s", err)
+		respondWithError(w, 401, "Invalid key")
+		return
+	} else if err != nil {
+		log.Printf("Error processing authorization: %s", err)
 		respondWithError(w, 500, "Something went wrong")
 		return
 	}
