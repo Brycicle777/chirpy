@@ -7,6 +7,7 @@ import (
 	"internal/database"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -404,6 +405,7 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 
 func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 	authorId, _ := uuid.Parse(r.URL.Query().Get("author_id"))
+	sortBy := r.URL.Query().Get("sort")
 
 	chirpResponses, err := cfg.db.GetChirps(r.Context())
 	if err != nil {
@@ -412,7 +414,7 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var chirps []chirpResponse
-	if len(authorId) > 0 {
+	if authorId != uuid.Nil {
 		for _, chirp := range chirpResponses {
 			if chirp.UserID == authorId {
 				chirps = append(chirps, chirpResponse{
@@ -434,6 +436,11 @@ func (cfg *apiConfig) handlerGetChirps(w http.ResponseWriter, r *http.Request) {
 				UserID:    chirp.UserID,
 			})
 		}
+	}
+	if sortBy == "desc" {
+		sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.After(chirps[j].CreatedAt) })
+	} else {
+		sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.Before(chirps[j].CreatedAt) })
 	}
 	respondWithJSON(w, 200, chirps)
 }
